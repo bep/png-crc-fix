@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log"
 	"os"
+	"path/filepath"
 )
 
 const chunkStartOffset = 8
@@ -21,33 +23,55 @@ type pngChunk struct {
 }
 
 func main() {
-	filePath := os.Args[1]
-
-	file, err := os.Open(filePath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(-1)
+	if len(os.Args) != 2 {
+		log.Fatal("must provide a root directory")
 	}
 
-	defer file.Close()
+	rootDir := os.Args[1]
 
-	if !isPng(file) {
-		fmt.Fprintln(os.Stderr, "Not a PNG")
-		os.Exit(-1)
+	if len(rootDir) < 10 {
+		log.Fatal("invalid root directory")
 	}
 
-	// Read all the chunks. They start with IHDR at offset 8
-	chunks := readChunks(file)
-
-	for _, chunk := range chunks {
-		fmt.Println(chunk)
-		if !chunk.CRCIsValid() {
-			file.Seek(chunk.CRCOffset(), os.SEEK_SET)
-			binary.Write(file, binary.BigEndian, chunk.CalculateCRC())
+	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
 		}
 
-		fmt.Println("Corrected CRC")
+		file, err := os.OpenFile(path, os.O_RDWR, 0666)
+		if err != nil {
+			return err
+		}
+
+		defer file.Close()
+
+		if !isPng(file) {
+			return nil
+		}
+
+		// Read all the chunks. They start with IHDR at offset 8
+		chunks := readChunks(file)
+		corrected := false
+		for _, chunk := range chunks {
+			if !chunk.CRCIsValid() {
+				corrected = true
+				file.Seek(chunk.CRCOffset(), os.SEEK_SET)
+				binary.Write(file, binary.BigEndian, chunk.CalculateCRC())
+			}
+
+		}
+
+		if corrected {
+			fmt.Println("Corrected CRC in", path)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Fatal(err)
 	}
+
 }
 
 func (p pngChunk) String() string {
