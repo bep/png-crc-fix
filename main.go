@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const chunkStartOffset = 8
@@ -30,11 +31,14 @@ func main() {
 	rootDir := os.Args[1]
 
 	if len(rootDir) < 10 {
-		log.Fatal("invalid root directory")
+		log.Fatal("invalid root directory (use absolute paths)")
 	}
 
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
+			if strings.HasPrefix(info.Name(), ".") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
